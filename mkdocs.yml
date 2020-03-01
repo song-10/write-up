@@ -1,0 +1,153 @@
+site_name: 知否
+
+site_description: 小菜鸟Nop的个人学习笔记
+
+site_author: Nop
+
+site_url: https://song-10.github.io/
+
+repo_name: 'song-10'
+repo_url: 'https://github.com/song-10/'
+
+
+copyright: copyright ©2019 created by Nop
+
+theme:
+  name: material
+  palette:
+    primary: 'Blue Grey'
+    accent: 'Pink'
+  font:
+    text: 'Ubuntu'
+    code: 'Ubuntu Mono'
+  # logo:
+    # icon: 'icons/logo.svg'
+  language: 'zh'
+  # favicon: 'icons/favicon.ico'
+extra:
+  social:
+    - type: github
+      link: https://github.com/song-10
+  search:
+    language: 'ja, en'
+    tokenizer: '[\s\-\.]+'
+
+markdown_extensions:
+  - admonition
+  - codehilite:
+      guess_lang: false
+      linenums: false
+  - toc:
+      permalink: true
+  - footnotes
+  - meta
+  - def_list
+  - pymdownx.arithmatex
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:pymdownx.emoji.to_png
+      #emoji_generator: !!python/name:pymdownx.emoji.to_svg
+      #emoji_generator: !!python/name:pymdownx.emoji.to_png_sprite
+      #emoji_generator: !!python/name:pymdownx.emoji.to_svg_sprite
+      #emoji_generator: !!python/name:pymdownx.emoji.to_awesome
+      #emoji_generator: !!python/name:pymdownx.emoji.to_alt
+  - pymdownx.inlinehilite
+  - pymdownx.magiclink
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist
+  - pymdownx.tilde
+
+extra_javascript:
+  - 'js/extra.js'
+  - 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-MML-AM_CHTML'
+
+nav:
+  - 首页: index.md
+  - Python: 
+    - python基础: ./python/python-part0.md
+    - python基础1: ./python/python-part1.md
+    - python基础2: ./python/python-part2.md
+    - python基础3: ./python/python-part3.md
+    - python文件操作: ./python/python.md
+    - binascii: ./python/python字节操作.md
+    - 正则表达式: ./python/python高级编程-正则.md
+    - MySql(mysql-connerctor): ./python/python高级编程-MySql（mysql-connector).md
+    - MySql(PyMySQL): ./python/python高级编程-MySQL（PyMySQL）.md
+    - 网络编程: ./python/python网络编程.md
+  - 文件结构: 
+    - ELF file: 
+      - ELF File Basic Structure: ./Execve/ELF.md
+  - Linux-Pwn: 
+    - Linux: 
+      - Linux堆内存管理(上): ./pwn/linux堆内存管理1.md
+      - Linux堆内存管理(下): ./pwn/linux堆内存管理2.md
+      - Linux堆相关数据结构: ./pwn/Linux堆相关数据结构.md
+      - Linux堆的实现:
+        - 基础函数: ./pwn/linux堆操作函数.md
+    - Pwn入门笔记(i春秋): 
+      - 环境配置: ./pwn/pwn-环境.md
+      - 栈溢出基础: ./pwn/pwn-栈溢出基础.md
+      - shellcode: ./pwn/pwn-shellcode.md
+      - ROP技术: ./pwn/pwn-ROP技术.md
+      - 栈帧调整技巧: ./pwn/pwn-栈帧调整技巧.md
+      - 利用漏洞获取libc: ./pwn/pwn-利用漏洞获取libc.md
+      - 格式化字符串漏洞: ./pwn/pwn-格式化字符串漏洞.md
+      - PIE与bypass思路: ./pwn/pwn-PIE与bypass思路.md
+      - SROP: ./pwn/pwn-SROP.md
+      - canary: ./pwn/pwn-canary.md
+      - 针对函数重定位的几种攻击: ./pwn/pwn-针对函数重定位流程的几种攻击.md
+    - ctfwiki:
+      - linux-pwn:
+        - Format String Vulnerability:
+          - Format String Vulnerability Principle: ./pwn/wiki-格式化字符串漏洞原理介绍.md
+          - Format Sting Exploit: ./pwn/wiki-格式化字符串漏洞利用.md
+        - Security Protection Mechanism: 
+          - Canary: ./pwn/wiki-canary.md
+        - Stack Overflow: 
+          - Stack Introduction: ./pwn/wiki-Stack&StackOverflow.md
+          - Basic ROP: ./pwn/wiki-BasicRop.md
+          - Intermediate ROP: ./pwn/wiki-IntermediateRop.md
+          - Advanced ROP: ./pwn/wiki-AdvancedRop.md
+          - ROP Tricks: ./pwn/wiki-ROPTricks.md
+        - Glibc Heap Related: 
+          - Heap Overview: ./pwn/wiki-heap.md
+          - Heap Overflow: ./pwn/wiki-HeapOverflow.md
+          - Heap-based Off-By-One: ./pwn/wiki-Heap-OffByOne.md
+    - GDB调试: ./pwn/gdb.md
+    - PEDA的使用: ./pwn/gdb-peda.md
+    - 一步一步学ROP_x86: ./pwn/一步一步学ROP_x86.md
+    - 一步一步学ROP_x64: ./pwn/一步一步学ROP_x64.md
+    - 生成可打印的shellcode: ./pwn/Metasploit生成shellcode.md
+    - 保护机制: ./pwn/二进制文件保护机制.md
+  - 逆向:
+    - 汇编: 
+      - 8086(intel): ./Reverse/汇编语言.md
+      - 80386(intel): ./Reverse/逆向工程-漏洞银行.md
+    - 逆向工具(python): ./Reverse/逆向小工具.md
+    - GNU(binutils): ./Reverse/GNU(binutils).md
+  - C语言: 
+    - C基础: ./C/c语言基础.md
+  - ctf杂项:
+    - 常见文件头: ./ctf-Misc/file_head.md
+    - PYC文件: ./ctf-Misc/pyc.md
+    - 大数RSA: ./ctf-Misc/python-RSA.md
+    - 编码解码: ./ctf-Misc/编码解码.md
+  - 算法:
+    - 算法初探: ./algorithm/算法初探.md
+  - 前端相关:
+    - HTML: ./aboutWeb/html入门与实践.md
+    - CSS: ./aboutWeb/前端开发CSS基础.md
+    - js: ./aboutWeb/Javascript快速入门.md
+  - 其他:
+    - MySQL: ./other/MySQL入门.md
+    - Linux: ./other/Linux基础入门.md
+    - 计算机网络: ./other/计算机网络基础.md
+    - 正则表达式: ./other/正则表达式.md
+    - Git: ./other/Git的使用.md
+    
