@@ -19,7 +19,7 @@
 
 ## System Calls
 
-在这篇文章里，malloc 是通过 brk 和 mmap 系统调用实现的[syscalls used by malloc](./pwn/linux_glibc1.md)
+在这篇文章里，malloc 是通过 brk 和 mmap 系统调用实现的[syscalls used by malloc](./linux_glibc1.md)
 
 ## Threading
 
