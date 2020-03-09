@@ -57,7 +57,7 @@ int main()
 
 **输出分析：**
 
-**在brk增加之前**：从输出可以看出没有heap段，
+**在brk增加之前** ：从输出可以看出没有heap段，
 
 - start_brk = brk = end_data = 0x804b000.
 
@@ -74,7 +74,7 @@ b7e21000-b7e22000 rw-p 00000000 00:00 0
 sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/syscalls$
 ```
 
-**brk增加之后**：从输出可以看出heap段出现，
+**brk增加之后** ：从输出可以看出heap段出现，
 
 - start_brk = end_data = 0x804b000
 - brk = 0x804c000
@@ -149,7 +149,7 @@ int main()
 
 **输出分析：**
 
-**mmap之前：**从下面的输出可以看到只有从共享库 libc.so 和 ld-linux.so的映射段
+**mmap之前：** 从下面的输出可以看到只有从共享库 libc.so 和 ld-linux.so的映射段
 
 ```s
 sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/syscalls$ cat /proc/6067/maps
@@ -161,7 +161,7 @@ b7e21000-b7e22000 rw-p 00000000 00:00 0
 sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/syscalls$
 ```
 
-**mmap之后：**从下面的输出可以看到我们的内存映射段（b7e00000 – b7e21000 大小为132kb）和已经存在的内存映射段（b7e21000 – b7e22000）合并了
+**mmap之后：** 从下面的输出可以看到我们的内存映射段（b7e00000 – b7e21000 大小为132kb）和已经存在的内存映射段（b7e21000 – b7e22000）合并了
 其中，
 
 - b7e00000-b7e22000 是这个段的虚拟地址范围
@@ -170,7 +170,7 @@ sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/syscalls$
 - 00:00 是 Major/Minor 设备号（因为没有从任何文件映射，所以这里为0）
 - 0 是索引号（因为没有从任何文件映射，所以这里为0）
 
-**munmap之后：**从下面的输出中可以看到我们的内存映射段已经从相应的内存中释放给操作系统了
+**munmap之后：** 从下面的输出中可以看到我们的内存映射段已经从相应的内存中释放给操作系统了
 
 ```s
 sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/syscalls$ cat /proc/6067/maps
