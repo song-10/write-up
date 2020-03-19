@@ -19,6 +19,7 @@ brk 通过增加brk的值来从内核获得内存（non zero initialized）。
 ![Alt](img/linux_glibc2.png)
 
 上图为进程虚拟内存的布局，从图中可知，start_brk 指向heap段的开始而brk（program break）指向heap段的末尾
+
 **示例：**
 
 ```c++
@@ -106,6 +107,7 @@ sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/syscalls$
 ## mmap
 
 malloc使用 mmap 来创建一个私有的匿名映射段。这个私有的匿名映射段的主要目的是分配一个新的内存（零填充）并且这个新的内存只能被调用进程所使用
+
 **示例:**
 
 ```c++

@@ -23,7 +23,12 @@
 
 ## Threading
 
-在早些时候的Linux，dlmalloc 是默认使用的内存分配器。但是之后由于ptmalloc2的多线程支持，ptmalloc2变成linux默认使用的内存分配器。多线程支持有助于提升内存分配器的性能进而应用程序的性能。在dlmalloc中，当两个进程同时调用malloc时， **只有一个进程** 可以进入临界区，因为只有空闲链表结构可以被所有可用线程共享。因此，内存分配在多线程进程上花费时间，导致性能下降。但是在ptmalloc2中两个进程同时调用malloc时两个进程可以同时得到内存，因为每个线程都维护一个独立的heap段，所以维护这些heap段的空闲链表结构也是独立的。为每个线程保持独立的heap段和空闲的数据链表结构叫做 **per thread arena**
+在早些时候的Linux，dlmalloc 是默认使用的内存分配器。但是之后由于ptmalloc2的多线程支持，ptmalloc2变成linux默认使用的内存分配器。多线程支持有助于提升内存分配器的性能进而应用程序的性能。
+
+在dlmalloc中，当两个进程同时调用malloc时， **只有一个进程** 可以进入临界区，因为只有空闲链表结构可以被所有可用线程共享。因此，内存分配在多线程进程上花费时间，导致性能下降。
+
+但是在ptmalloc2中两个进程同时调用malloc时两个进程可以同时得到内存，因为每个线程都维护一个独立的heap段，所以维护这些heap段的空闲链表结构也是独立的。为每个线程保持独立的heap段和空闲的数据链表结构叫做 **per thread arena**
+
 **示例：**
 
 ```c++
@@ -77,6 +82,7 @@ int main() {
 ```
 
 **输出分析：**
+
 **main thread的malloc调用前：** 通过下面的输出我们可以看到还没有heap段，也没有线程的栈因为thread1还未被创建
 
 ```s
@@ -93,7 +99,9 @@ b7e05000-b7e07000 rw-p 00000000 00:00 0
 sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/mthread$
 ```
 
-**main thread的malloc调用之后：** 从下面的输出可以看到heap段已经创建，并且在数据段（0804b000-0806c000）上面，这说明heap段是通过增加brk的值创建的。此外需要注意的是虽然用户只是请求了1000bytes，却创建了132kb的堆内存。堆内存的这块连续的区域被叫做 arena，因为这个arena被主线程创建所以也叫 main arena。另外的分配请求使用这块区域分配直到它用完为止。当 **arena 的空闲空间用完** ，可以通过增加brk的值来增加arena的大小（之后 top chunk的size值会被调整到新的arena的大小）。类似的，当有太多空闲空间的时候，arena也可以通过 shrink 来减小大小。
+**main thread的malloc调用之后：** 从下面的输出可以看到heap段已经创建，并且在数据段（0804b000-0806c000）上面，这说明heap段是通过增加brk的值创建的。此外需要注意的是虽然用户只是请求了1000bytes，却创建了132kb的堆内存。堆内存的这块连续的区域被叫做 arena，因为这个arena被主线程创建所以也叫 main arena。另外的分配请求使用这块区域分配直到它用完为止。
+
+当 **arena 的空闲空间用完** ，可以通过增加brk的值来增加arena的大小（之后 top chunk的size值会被调整到新的arena的大小）。类似的，当有太多空闲空间的时候，arena也可以通过 shrink 来减小大小。
 
 > 注意：top chunk 是一个arena 最顶端的chunk，详细内容参见后文“Top Chunk”
 
@@ -206,7 +214,9 @@ sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/mthread$
 
 ## Arena
 
-**arena的个数：** 上面的例子中，我们可以看到主线程包含 main arena，thread1包含它自己的 thread arena。所以无论线程数是多少，线程和arena有一一对应的映射关系吗？当然不是。一个程序可以包含比核心数跟多的线程数，但是在这种情况下，每个线程有一个arena是有点昂贵且没有用的。于是，程序的 arena 会被运行系统的核心数所限制
+**arena的个数：** 上面的例子中，我们可以看到主线程包含 main arena，thread1包含它自己的 thread arena。所以无论线程数是多少，线程和arena有一一对应的映射关系吗？
+
+当然不是。一个程序可以包含比核心数跟多的线程数，但是在这种情况下，每个线程有一个arena是有点昂贵且没有用的。于是，程序的 arena 会被运行系统的核心数所限制
 
 ```s
 For 32 bit systems:
@@ -237,7 +247,9 @@ For 64 bit systems:
 - malloc_chunk: chunk header，经过用户的申请一个堆被分割成许多的chunks，每个chunks都有自己的chunk header
 
 > 注意：
+>
 > 1.main arena 没有多个heap，所以它没有 heap_info.当main arena空间被用完时，通过 sbrk 拓展堆内存（连续区域），直到碰到内存的映射段为止
+>
 > 2.与thread arena不同，main arena 的arena header不是heap段的一部分，它是一个全局变量，所以它在libc.so的数据段
 
 下图所示的是main arena和thread arena（单个堆段）：
@@ -262,6 +274,7 @@ For 64 bit systems:
 ![Alt](img/linux_glibc5.png)
 
 **prev_size:** 如果前一个chunk是空闲的，这部分内容表示前一个chunk的大小。如果前一个chunk不是空闲的，这部分内容可以被前一个chunk的user data所覆盖
+
 **size：** 这部分内容表示当前被分配的chunk大小，最后3bit是标志信息：
 
 - PREV_INUSE(P): 当前一个chunk被分配时，设置这一位
@@ -269,7 +282,9 @@ For 64 bit systems:
 - NON_MAIN_ARENA(N)：这一位用来表示当前chunk是否是thread arena
 
 > 注意：
+>
 > 1.malloc_chunk的其他部分（如 fd、bk）在allocated chunk中并没有被使用。所以这些内容可以被user data覆盖
+>
 > 2.用户请求的大小被转换成可用的大小（内部表示的大小），因为需要额外的空间用来储存malloc_chunk和对齐。转换通过这样一种方式，即最后的3bit可用大小永远不会改变因为它们存储着标志位信息
 
 ### Free chunk
@@ -277,8 +292,11 @@ For 64 bit systems:
 ![Alt](img/linux_glibc6.png)
 
 **prev_size:** 不会存在两个连续的空闲chunk。如果两个chunk都是空闲的，那么他们就会被合并成一个单个的chunk。所以一个空闲chunk的前一个chunk总是被分配的，并且当前空闲chunk的prev_size可以包含前一个chunk的用户数据
+
 **size:** 这部分内容记录当前空闲chunk的大小
+
 **fd:** 前驱指针（forward pointer），指向同一个bin链表中的下一个chunk（不是当前块物理内存上的下一个）
+
 **bk** 后驱指针（backward pointer），指向同一个bin链表中的前一个chunk（不是当前物理内存上的上一个）
 
 ## bins
@@ -382,8 +400,10 @@ remainder chunk 会变成新的top chunk，如果top chunk 的大小小于用户
 ### Last Remainder chunk
 
 最近请求中剩下的小的那部分，last remainder chunk有助于提高内存分配局部性。比如，连续的malloc请求small chunk 可能会得到相邻的内存块
+
 但是在一个arena的所有的可用chunks中，哪一个chunk才能成为last remainder chunk？
 当用户请求一个small chunk但在small bin和unsorted bin中没有合适的空闲chunk时，就会在下一个大小的small bin（非空的）的链表中寻找。之前说过，如果在下一个大小的small bin中找到了，就将其分成两部分，一部分返回给用户，剩下的就添加到unsorted bin中。然后将这个剩下的部分变成last remainder chunk
+
 局部访问是怎样实现的？
 当用户请求small chunk并且unsorted bin中的chunk只有last remainder，last remainder chunk会被分成两部分，一部分返回给用户，一部分放到unsorted bin并成为新的last remainder chunk。这样连续的small chunk请求得到的chunk就是相邻的
 即提高了内存分配的局部性。
