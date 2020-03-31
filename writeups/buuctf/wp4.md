@@ -1,5 +1,7 @@
 # buuctf wp part4
 
+[bin file](https://github.com/song-10/notes/tree/master/writeups)
+
 ## jarvisoj_fm
 
 ```python

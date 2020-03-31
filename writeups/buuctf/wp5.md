@@ -1,4 +1,6 @@
-# # buuctf wp part5
+# buuctf wp part5
+
+[bin file](https://github.com/song-10/notes/tree/master/writeups)
 
 ## not_the_same_3dsctf_2016
 

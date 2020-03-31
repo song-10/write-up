@@ -1,5 +1,7 @@
 # buuctf wp part2
 
+[bin file](https://github.com/song-10/notes/tree/master/writeups)
+
 ## ciscn_2019_c_1
 
 ```python

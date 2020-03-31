@@ -1,5 +1,7 @@
 # buuctf wp part1
 
+[bin file](https://github.com/song-10/notes/tree/master/writeups)
+
 ## [BJDCTF 2nd]one_gadget
 
 ```python
