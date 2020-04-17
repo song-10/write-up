@@ -83,7 +83,7 @@ bcopy|字符串
 ```c++
 #include <stdio.h>
 
-int main(void) 
+int main(void)
 {
   char *chunk;
   chunk=malloc(0);
@@ -106,7 +106,7 @@ int main(void)
 ```c++
 #include <stdio.h>
 
-int main(void) 
+int main(void)
 {
   char *chunk;
   chunk=malloc(24);

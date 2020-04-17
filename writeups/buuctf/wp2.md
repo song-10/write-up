@@ -1,6 +1,6 @@
 # buuctf wp part2
 
-[bin file](https://github.com/song-10/notes/tree/master/writeups)
+[bin file](https://github.com/song-10/notes/tree/master/bin-file)
 
 ## ciscn_2019_c_1
 

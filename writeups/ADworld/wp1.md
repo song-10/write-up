@@ -1,6 +1,6 @@
 # ADworld
 
-[bin file](https://github.com/song-10/notes/tree/master/writeups)
+[bin file](https://github.com/song-10/notes/tree/master/bin-file)
 
 ## cgpwn2
 

