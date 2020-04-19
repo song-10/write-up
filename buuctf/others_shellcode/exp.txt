@@ -1,0 +1,2 @@
+just nc node3.buuoj.cn 28507
+and cat flag
